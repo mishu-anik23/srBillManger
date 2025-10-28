@@ -8,7 +8,12 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtCore import Qt
 import webbrowser
-from fpdf import FPDF
+try:
+    from fpdf import FPDF
+    PDF_AVAILABLE = True
+except ImportError:
+    PDF_AVAILABLE = False
+    print("Warning: fpdf module not available. PDF generation will be disabled.")
 from datetime import datetime
 
 
@@ -18,12 +23,37 @@ class BillingWindow(QWidget):
         self.setWindowTitle("Supermarket Billing System")
         self.setFixedSize(1000, 700)
 
-        self.conn = sqlite3.connect("supermarket.db")
-        self.cursor = self.conn.cursor()
+        try:
+            self.conn = sqlite3.connect("supermarket.db")
+            self.cursor = self.conn.cursor()
+            print("Database connected successfully")
+        except Exception as e:
+            print(f"Database connection failed: {e}")
+            QMessageBox.critical(self, "Database Error", f"Failed to connect to database: {e}")
+            return
 
         self.init_ui()
         self.product_row = 0
         self.total_amount = 0.0
+
+    def __del__(self):
+        """Clean up database connection when object is destroyed"""
+        try:
+            if hasattr(self, 'conn') and self.conn:
+                self.conn.close()
+                print("Database connection closed")
+        except Exception as e:
+            print(f"Error closing database: {e}")
+
+    def closeEvent(self, event):
+        """Handle window close event"""
+        try:
+            if hasattr(self, 'conn') and self.conn:
+                self.conn.close()
+                print("Database connection closed on window close")
+        except Exception as e:
+            print(f"Error closing database: {e}")
+        event.accept()
 
     def init_ui(self):
         main_layout = QVBoxLayout()
@@ -31,9 +61,14 @@ class BillingWindow(QWidget):
         # Logo
         logo = QLabel()
         logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        logo.setPixmap(QPixmap("assets/logo-sr.jpeg").scaledToWidth(120))
+        try:
+            logo.setPixmap(QPixmap("assets/logo-sr.jpeg").scaledToWidth(120))
+            print("Logo Created")
+        except Exception as e:
+            print(f"Logo loading failed: {e}")
+            logo.setText("Supermarket Billing System")
+            logo.setStyleSheet("font-size: 18px; font-weight: bold;")
         main_layout.addWidget(logo)
-        print("Logo Created")
 
         # Customer Info Section
         cust_layout = QHBoxLayout()
@@ -75,6 +110,10 @@ class BillingWindow(QWidget):
             ["Product Name", "Quantity", "Unit Price", "Subtotal", "Barcode", "Category"]
         )
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        
+        # Connect table item changed signal for automatic subtotal updates
+        self.table.itemChanged.connect(self.on_item_changed)
+        
         main_layout.addWidget(self.table)
 
         # Bill Actions
@@ -94,67 +133,132 @@ class BillingWindow(QWidget):
         main_layout.addLayout(bill_actions)
         self.setLayout(main_layout)
 
+    def on_item_changed(self, item):
+        """Handle when a table item is changed"""
+        if item is None:
+            return
+        
+        row = item.row()
+        col = item.column()
+        
+        # Only update subtotals if quantity or price changed
+        if col in [1, 2]:  # Quantity or Unit Price columns
+            self.update_subtotals()
+
     def handle_barcode(self):
         barcode = self.barcode_input.text()
         if not barcode:
             return
-        self.cursor.execute("SELECT name, unit_price, category FROM products WHERE barcode = ?", (barcode,))
-        result = self.cursor.fetchone()
-        if result:
-            name, price, category = result
-            self.insert_product_row(name, 1, price, barcode, category)
+        
+        try:
+            self.cursor.execute("SELECT name, unit_price, category FROM products WHERE barcode = ?", (barcode,))
+            result = self.cursor.fetchone()
+            if result:
+                name, price, category = result
+                self.insert_product_row(name, 1, price, barcode, category)
+                self.barcode_input.clear()
+            else:
+                # Instead of showing a warning, add a manual row for the unknown barcode
+                reply = QMessageBox.question(self, "Product Not Found",
+                                              f"No product found with barcode: {barcode}\n\nWould you like to add it manually?",
+                                              QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                if reply == QMessageBox.StandardButton.Yes:
+                    self.insert_product_row("Enter Product Name", 1, 0.00, barcode, "General")
+                    # Focus on the product name cell for immediate editing
+                    current_row = self.table.rowCount() - 1
+                    self.table.setCurrentCell(current_row, 0)
+                    self.table.edit(self.table.currentIndex())
+                self.barcode_input.clear()
+        except Exception as e:
+            print(f"Error handling barcode: {e}")
+            QMessageBox.warning(self, "Error", f"Error processing barcode: {e}")
             self.barcode_input.clear()
-        else:
-            QMessageBox.warning(self, "Product Not Found", f"No product with barcode: {barcode}")
 
     def insert_product_row(self, name, qty, price, barcode, category):
         row_pos = self.table.rowCount()
         self.table.insertRow(row_pos)
 
-        self.table.setItem(row_pos, 0, QTableWidgetItem(name))
+        # Product name - make it editable
+        name_item = QTableWidgetItem(name)
+        name_item.setFlags(Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsSelectable)
+        self.table.setItem(row_pos, 0, name_item)
+
+        # Quantity - make it editable
         qty_item = QTableWidgetItem(str(qty))
+        qty_item.setFlags(Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsSelectable)
+        qty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        qty_item.setToolTip("Double-click to edit quantity")
+        self.table.setItem(row_pos, 1, qty_item)
+
+        # Unit price - make it editable
         price_item = QTableWidgetItem(str(price))
+        price_item.setFlags(Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsSelectable)
+        price_item.setToolTip("Double-click to edit price")
+        self.table.setItem(row_pos, 2, price_item)
+
+        # Calculate subtotal
         subtotal = float(price) * qty
         subtotal_item = QTableWidgetItem(f"{subtotal:.2f}")
-
-        self.table.setItem(row_pos, 1, qty_item)
-        self.table.setItem(row_pos, 2, price_item)
+        subtotal_item.setFlags(Qt.ItemFlag.ItemIsSelectable)  # Read-only
         self.table.setItem(row_pos, 3, subtotal_item)
-        self.table.setItem(row_pos, 4, QTableWidgetItem(barcode))
-        self.table.setItem(row_pos, 5, QTableWidgetItem(category))
 
-        qty_item.setFlags(Qt.ItemFlag.ItemIsEditable)
-        qty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-        qty_item.setText(str(qty))
-        qty_item.setToolTip("Double-click to edit quantity")
+        # Barcode - make it editable
+        barcode_item = QTableWidgetItem(barcode)
+        barcode_item.setFlags(Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsSelectable)
+        barcode_item.setToolTip("Double-click to edit barcode")
+        self.table.setItem(row_pos, 4, barcode_item)
 
-        qty_item.textChanged.connect(lambda: self.update_subtotals())
+        # Category - make it editable
+        category_item = QTableWidgetItem(category)
+        category_item.setFlags(Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsSelectable)
+        category_item.setToolTip("Double-click to edit category")
+        self.table.setItem(row_pos, 5, category_item)
+
+        # Connect signals for automatic updates - use itemChanged signal instead
+        # We'll connect to the table's itemChanged signal in init_ui
+
         self.update_total()
 
     def update_subtotals(self):
         for row in range(self.table.rowCount()):
             try:
-                qty = float(self.table.item(row, 1).text())
-                price = float(self.table.item(row, 2).text())
+                qty_text = self.table.item(row, 1).text()
+                price_text = self.table.item(row, 2).text()
+
+                # Validate inputs
+                if not qty_text or not price_text:
+                    continue
+
+                qty = float(qty_text)
+                price = float(price_text)
                 subtotal = qty * price
                 self.table.setItem(row, 3, QTableWidgetItem(f"{subtotal:.2f}"))
-            except Exception:
-                continue
+            except (ValueError, AttributeError):
+                # If conversion fails, set subtotal to 0
+                self.table.setItem(row, 3, QTableWidgetItem("0.00"))
         self.update_total()
 
     def update_total(self):
         total = 0.0
         for row in range(self.table.rowCount()):
             try:
-                subtotal = float(self.table.item(row, 3).text())
-                total += subtotal
-            except:
+                subtotal_text = self.table.item(row, 3).text()
+                if subtotal_text:
+                    subtotal = float(subtotal_text)
+                    total += subtotal
+            except (ValueError, AttributeError):
                 continue
         self.total_label.setText(f"Total: ${total:.2f}")
         self.total_amount = total
 
     def add_manual_row(self):
-        self.insert_product_row("New Item", 1, 0.00, "-", "vegetable")
+        # Add a new row with default values that can be edited
+        self.insert_product_row("Enter Product Name", 1, 0.00, "Manual Entry", "General")
+
+        # Focus on the product name cell for immediate editing
+        current_row = self.table.rowCount() - 1
+        self.table.setCurrentCell(current_row, 0)
+        self.table.edit(self.table.currentIndex())
 
     def remove_selected_row(self):
         row = self.table.currentRow()
@@ -185,6 +289,11 @@ class BillingWindow(QWidget):
         webbrowser.open(f"file://{file_path}")
 
     def download_pdf(self):
+        if not PDF_AVAILABLE:
+            QMessageBox.warning(self, "PDF Not Available", 
+                               "PDF generation requires the fpdf module.\nPlease install it using: pip install fpdf2")
+            return
+            
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Arial", size=12)
