@@ -3,10 +3,11 @@ import sqlite3
 import os
 from PyQt6.QtWidgets import (
     QWidget, QLabel, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton,
-    QComboBox, QTableWidget, QTableWidgetItem, QHeaderView, QFileDialog, QMessageBox
+    QComboBox, QTableWidget, QTableWidgetItem, QHeaderView, QFileDialog, QMessageBox,
+    QDateEdit
 )
 from PyQt6.QtGui import QPixmap
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QDate
 import webbrowser
 try:
     from fpdf import FPDF
@@ -58,17 +59,41 @@ class BillingWindow(QWidget):
     def init_ui(self):
         main_layout = QVBoxLayout()
 
+        # Logo and Shop Info Section
+        logo_section = QVBoxLayout()
+        
         # Logo
         logo = QLabel()
         logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         try:
-            logo.setPixmap(QPixmap("assets/logo-sr.jpeg").scaledToWidth(120))
+            logo.setPixmap(QPixmap("assets/logo-sr.jpeg").scaledToWidth(150))
             print("Logo Created")
         except Exception as e:
             print(f"Logo loading failed: {e}")
-            logo.setText("Supermarket Billing System")
-            logo.setStyleSheet("font-size: 18px; font-weight: bold;")
-        main_layout.addWidget(logo)
+            logo.setText("SUNRISE SUPERMARKET")
+            logo.setStyleSheet("font-size: 20px; font-weight: bold; color: #2E7D32;")
+        logo_section.addWidget(logo)
+        
+        # Shop Address
+        address_label = QLabel("Schwarzwald Straße 27, 60528 Frankfurt am Main")
+        address_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        address_label.setStyleSheet("font-size: 12px; color: #666; margin: 5px;")
+        logo_section.addWidget(address_label)
+        
+        # Date Picker
+        date_layout = QHBoxLayout()
+        date_label = QLabel("Bill Date:")
+        date_label.setStyleSheet("font-weight: bold;")
+        self.date_picker = QDateEdit()
+        self.date_picker.setDate(QDate.currentDate())
+        self.date_picker.setCalendarPopup(True)
+        self.date_picker.setStyleSheet("padding: 5px;")
+        date_layout.addWidget(date_label)
+        date_layout.addWidget(self.date_picker)
+        date_layout.addStretch()  # Push to the left
+        
+        logo_section.addLayout(date_layout)
+        main_layout.addLayout(logo_section)
 
         # Customer Info Section
         cust_layout = QHBoxLayout()
@@ -274,7 +299,17 @@ class BillingWindow(QWidget):
             QMessageBox.information(self, "No Selection", "Please select a row to remove.")
 
     def generate_bill(self):
-        html = "<h1>Supermarket Bill</h1>"
+        # Get selected date
+        selected_date = self.date_picker.date().toString("dd.MM.yyyy")
+        
+        html = "<div style='text-align: center; margin-bottom: 20px;'>"
+        html += "<h1 style='color: #2E7D32; margin: 0;'>SUNRISE SUPERMARKET</h1>"
+        html += "<p style='margin: 5px 0; color: #666;'>Schwarzwald Straße 27, 60528 Frankfurt am Main</p>"
+        html += f"<p style='margin: 5px 0;'><b>Bill Date:</b> {selected_date}</p>"
+        html += "</div>"
+        
+        html += "<hr style='margin: 20px 0;'>"
+        html += "<h2>Customer Information</h2>"
         html += f"<p><b>Name:</b> {self.name_input.text()}<br>"
         html += f"<b>Phone:</b> {self.phone_input.text()}<br>"
         html += f"<b>Order Type:</b> {self.order_type.currentText()}<br><br>"
@@ -300,21 +335,40 @@ class BillingWindow(QWidget):
             QMessageBox.warning(self, "PDF Not Available", 
                                "PDF generation requires the fpdf module.\nPlease install it using: pip install fpdf2")
             return
+        
+        # Get selected date
+        selected_date = self.date_picker.date().toString("dd.MM.yyyy")
             
         pdf = FPDF()
         pdf.add_page()
-        pdf.set_font("Arial", size=12)
-        pdf.cell(200, 10, txt="Supermarket Bill", ln=True, align="C")
-        pdf.cell(200, 10, txt=f"Customer: {self.name_input.text()}", ln=True)
-        pdf.cell(200, 10, txt=f"Order Type: {self.order_type.currentText()}", ln=True)
+        
+        # Header
+        pdf.set_font("Arial", "B", 16)
+        pdf.cell(200, 10, txt="SUNRISE SUPERMARKET", ln=True, align="C")
+        pdf.set_font("Arial", size=10)
+        pdf.cell(200, 6, txt="Schwarzwald Straße 27, 60528 Frankfurt am Main", ln=True, align="C")
+        pdf.cell(200, 6, txt=f"Bill Date: {selected_date}", ln=True, align="C")
+        pdf.ln(10)
+        
+        # Customer Information
+        pdf.set_font("Arial", "B", 12)
+        pdf.cell(200, 8, txt="Customer Information", ln=True)
+        pdf.set_font("Arial", size=10)
+        pdf.cell(200, 6, txt=f"Name: {self.name_input.text()}", ln=True)
+        pdf.cell(200, 6, txt=f"Phone: {self.phone_input.text()}", ln=True)
+        pdf.cell(200, 6, txt=f"Order Type: {self.order_type.currentText()}", ln=True)
         pdf.ln(10)
 
-        pdf.set_font("Arial", size=10)
+        # Product Table Header
+        pdf.set_font("Arial", "B", 10)
         pdf.cell(60, 10, "Product", border=1)
         pdf.cell(30, 10, "Qty", border=1)
         pdf.cell(40, 10, "Unit Price", border=1)
         pdf.cell(40, 10, "Subtotal", border=1)
         pdf.ln()
+        
+        # Product Table Data
+        pdf.set_font("Arial", size=10)
 
         for row in range(self.table.rowCount()):
             for col in [0, 1, 2, 3]:
@@ -322,7 +376,9 @@ class BillingWindow(QWidget):
                 pdf.cell([60, 30, 40, 40][col], 10, text, border=1)
             pdf.ln()
 
-        pdf.cell(130, 10, "Total", border=1)
+        # Total row
+        pdf.set_font("Arial", "B", 10)
+        pdf.cell(130, 10, "TOTAL", border=1)
         pdf.cell(40, 10, f"${self.total_amount:.2f}", border=1)
         pdf_path = QFileDialog.getSaveFileName(self, "Save Bill as PDF", "supermarket_bill.pdf", "PDF Files (*.pdf)")[0]
         if pdf_path:
