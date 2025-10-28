@@ -114,6 +114,9 @@ class BillingWindow(QWidget):
         # Connect table item changed signal for automatic subtotal updates
         self.table.itemChanged.connect(self.on_item_changed)
         
+        # Enable editing with double-click and F2 key
+        self.table.setEditTriggers(QTableWidget.EditTrigger.DoubleClicked | QTableWidget.EditTrigger.EditKeyPressed | QTableWidget.EditTrigger.AnyKeyPressed)
+        
         main_layout.addWidget(self.table)
 
         # Bill Actions
@@ -180,19 +183,19 @@ class BillingWindow(QWidget):
 
         # Product name - make it editable
         name_item = QTableWidgetItem(name)
-        name_item.setFlags(Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsSelectable)
+        name_item.setFlags(Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
         self.table.setItem(row_pos, 0, name_item)
-
+        
         # Quantity - make it editable
         qty_item = QTableWidgetItem(str(qty))
-        qty_item.setFlags(Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsSelectable)
+        qty_item.setFlags(Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
         qty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         qty_item.setToolTip("Double-click to edit quantity")
         self.table.setItem(row_pos, 1, qty_item)
-
+        
         # Unit price - make it editable
         price_item = QTableWidgetItem(str(price))
-        price_item.setFlags(Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsSelectable)
+        price_item.setFlags(Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
         price_item.setToolTip("Double-click to edit price")
         self.table.setItem(row_pos, 2, price_item)
 
@@ -204,13 +207,13 @@ class BillingWindow(QWidget):
 
         # Barcode - make it editable
         barcode_item = QTableWidgetItem(barcode)
-        barcode_item.setFlags(Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsSelectable)
+        barcode_item.setFlags(Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
         barcode_item.setToolTip("Double-click to edit barcode")
         self.table.setItem(row_pos, 4, barcode_item)
-
+        
         # Category - make it editable
         category_item = QTableWidgetItem(category)
-        category_item.setFlags(Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsSelectable)
+        category_item.setFlags(Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
         category_item.setToolTip("Double-click to edit category")
         self.table.setItem(row_pos, 5, category_item)
 
@@ -254,17 +257,21 @@ class BillingWindow(QWidget):
     def add_manual_row(self):
         # Add a new row with default values that can be edited
         self.insert_product_row("Enter Product Name", 1, 0.00, "Manual Entry", "General")
-
+        
         # Focus on the product name cell for immediate editing
         current_row = self.table.rowCount() - 1
-        self.table.setCurrentCell(current_row, 0)
-        self.table.edit(self.table.currentIndex())
+        if current_row >= 0:
+            self.table.setCurrentCell(current_row, 0)
+            # Start editing immediately
+            self.table.edit(self.table.currentIndex())
 
     def remove_selected_row(self):
         row = self.table.currentRow()
         if row >= 0:
             self.table.removeRow(row)
             self.update_total()
+        else:
+            QMessageBox.information(self, "No Selection", "Please select a row to remove.")
 
     def generate_bill(self):
         html = "<h1>Supermarket Bill</h1>"
