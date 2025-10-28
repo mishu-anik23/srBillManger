@@ -35,6 +35,8 @@ class BillingWindow(QWidget):
 
         self.init_ui()
         self.product_row = 0
+        self.subtotal_amount = 0.0
+        self.tax_amount = 0.0
         self.total_amount = 0.0
 
     def __del__(self):
@@ -146,6 +148,28 @@ class BillingWindow(QWidget):
 
         # Bill Actions
         bill_actions = QHBoxLayout()
+        
+        # Tax Selection
+        tax_layout = QHBoxLayout()
+        tax_label = QLabel("Tax Rate:")
+        tax_label.setStyleSheet("font-weight: bold;")
+        self.tax_combo = QComboBox()
+        self.tax_combo.addItems(["0%", "7%", "19%"])
+        self.tax_combo.setCurrentText("7%")  # Default to 7%
+        self.tax_combo.currentTextChanged.connect(self.update_tax_calculation)
+        self.tax_combo.setStyleSheet("padding: 5px;")
+        
+        tax_layout.addWidget(tax_label)
+        tax_layout.addWidget(self.tax_combo)
+        tax_layout.addStretch()
+        
+        # Total display
+        self.subtotal_label = QLabel("Subtotal: $0.00")
+        self.subtotal_label.setStyleSheet("font-size: 14px;")
+        
+        self.tax_label = QLabel("Tax: $0.00")
+        self.tax_label.setStyleSheet("font-size: 14px; color: #666;")
+        
         self.total_label = QLabel("Total: $0.00")
         self.total_label.setStyleSheet("font-size: 16px; font-weight: bold;")
 
@@ -155,8 +179,13 @@ class BillingWindow(QWidget):
         download_btn = QPushButton("Download PDF")
         download_btn.clicked.connect(self.download_pdf)
 
-        for w in [self.total_label, generate_btn, download_btn]:
-            bill_actions.addWidget(w)
+        # Add widgets to layout
+        bill_actions.addLayout(tax_layout)
+        bill_actions.addWidget(self.subtotal_label)
+        bill_actions.addWidget(self.tax_label)
+        bill_actions.addWidget(self.total_label)
+        bill_actions.addWidget(generate_btn)
+        bill_actions.addWidget(download_btn)
 
         main_layout.addLayout(bill_actions)
         self.setLayout(main_layout)
@@ -172,6 +201,21 @@ class BillingWindow(QWidget):
         # Only update subtotals if quantity or price changed
         if col in [1, 2]:  # Quantity or Unit Price columns
             self.update_subtotals()
+
+    def update_tax_calculation(self):
+        """Update tax calculation when tax rate changes"""
+        self.update_total()
+
+    def get_tax_rate(self):
+        """Get the current tax rate as a decimal"""
+        tax_text = self.tax_combo.currentText()
+        if tax_text == "0%":
+            return 0.0
+        elif tax_text == "7%":
+            return 0.07
+        elif tax_text == "19%":
+            return 0.19
+        return 0.07  # Default to 7%
 
     def handle_barcode(self):
         barcode = self.barcode_input.text()
@@ -267,16 +311,31 @@ class BillingWindow(QWidget):
         self.update_total()
 
     def update_total(self):
-        total = 0.0
+        # Calculate subtotal
+        subtotal = 0.0
         for row in range(self.table.rowCount()):
             try:
                 subtotal_text = self.table.item(row, 3).text()
                 if subtotal_text:
-                    subtotal = float(subtotal_text)
-                    total += subtotal
+                    subtotal += float(subtotal_text)
             except (ValueError, AttributeError):
                 continue
+        
+        # Calculate tax
+        tax_rate = self.get_tax_rate()
+        tax_amount = subtotal * tax_rate
+        
+        # Calculate total
+        total = subtotal + tax_amount
+        
+        # Update labels
+        self.subtotal_label.setText(f"Subtotal: ${subtotal:.2f}")
+        self.tax_label.setText(f"Tax: ${tax_amount:.2f}")
         self.total_label.setText(f"Total: ${total:.2f}")
+        
+        # Update instance variables
+        self.subtotal_amount = subtotal
+        self.tax_amount = tax_amount
         self.total_amount = total
 
     def add_manual_row(self):
@@ -321,7 +380,12 @@ class BillingWindow(QWidget):
                 item = self.table.item(row, col)
                 html += f"<td>{item.text()}</td>"
             html += "</tr>"
-        html += f"<tr><td colspan='3'><b>Total</b></td><td><b>${self.total_amount:.2f}</b></td></tr>"
+        
+        # Add tax breakdown
+        tax_rate_text = self.tax_combo.currentText()
+        html += f"<tr><td colspan='3'><b>Subtotal</b></td><td><b>${self.subtotal_amount:.2f}</b></td></tr>"
+        html += f"<tr><td colspan='3'><b>Tax ({tax_rate_text})</b></td><td><b>${self.tax_amount:.2f}</b></td></tr>"
+        html += f"<tr style='background-color: #f0f0f0;'><td colspan='3'><b>TOTAL</b></td><td><b>${self.total_amount:.2f}</b></td></tr>"
         html += "</table>"
 
         file_path = os.path.abspath("temp_bill.html")
@@ -376,6 +440,17 @@ class BillingWindow(QWidget):
                 pdf.cell([60, 30, 40, 40][col], 10, text, border=1)
             pdf.ln()
 
+        # Tax breakdown
+        tax_rate_text = self.tax_combo.currentText()
+        pdf.set_font("Arial", size=10)
+        pdf.cell(130, 10, "Subtotal", border=1)
+        pdf.cell(40, 10, f"${self.subtotal_amount:.2f}", border=1)
+        pdf.ln()
+        
+        pdf.cell(130, 10, f"Tax ({tax_rate_text})", border=1)
+        pdf.cell(40, 10, f"${self.tax_amount:.2f}", border=1)
+        pdf.ln()
+        
         # Total row
         pdf.set_font("Arial", "B", 10)
         pdf.cell(130, 10, "TOTAL", border=1)
