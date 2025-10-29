@@ -82,6 +82,9 @@ class BillingWindow(QWidget):
         address_label.setStyleSheet("font-size: 12px; color: #666; margin: 5px;")
         logo_section.addWidget(address_label)
         
+        # Date and Invoice Number
+        date_invoice_layout = QHBoxLayout()
+        
         # Date Picker
         date_layout = QHBoxLayout()
         date_label = QLabel("Bill Date:")
@@ -92,9 +95,23 @@ class BillingWindow(QWidget):
         self.date_picker.setStyleSheet("padding: 5px;")
         date_layout.addWidget(date_label)
         date_layout.addWidget(self.date_picker)
-        date_layout.addStretch()  # Push to the left
         
-        logo_section.addLayout(date_layout)
+        # Invoice Number
+        invoice_layout = QHBoxLayout()
+        invoice_label = QLabel("Invoice #:")
+        invoice_label.setStyleSheet("font-weight: bold;")
+        self.invoice_number_input = QLineEdit()
+        self.invoice_number_input.setPlaceholderText("e.g., 001, 002, 003")
+        self.invoice_number_input.setStyleSheet("padding: 5px; width: 80px;")
+        self.invoice_number_input.setText("001")  # Default value
+        invoice_layout.addWidget(invoice_label)
+        invoice_layout.addWidget(self.invoice_number_input)
+        
+        date_invoice_layout.addLayout(date_layout)
+        date_invoice_layout.addLayout(invoice_layout)
+        date_invoice_layout.addStretch()  # Push to the left
+        
+        logo_section.addLayout(date_invoice_layout)
         main_layout.addLayout(logo_section)
 
         # Customer Info Section
@@ -104,7 +121,7 @@ class BillingWindow(QWidget):
         self.phone_input = QLineEdit()
         self.phone_input.setPlaceholderText("Phone Number")
         self.address_input = QLineEdit()
-        self.address_input.setPlaceholderText("Address")
+        self.address_input.setPlaceholderText("Customer Address")
 
         self.order_type = QComboBox()
         self.order_type.addItems(["Retail", "Wholesale"])
@@ -164,13 +181,13 @@ class BillingWindow(QWidget):
         tax_layout.addStretch()
         
         # Total display
-        self.subtotal_label = QLabel("Subtotal: $0.00")
+        self.subtotal_label = QLabel("Subtotal: €0.00")
         self.subtotal_label.setStyleSheet("font-size: 14px;")
         
-        self.tax_label = QLabel("Tax: $0.00")
+        self.tax_label = QLabel("Tax: €0.00")
         self.tax_label.setStyleSheet("font-size: 14px; color: #666;")
         
-        self.total_label = QLabel("Total: $0.00")
+        self.total_label = QLabel("Total: €0.00")
         self.total_label.setStyleSheet("font-size: 16px; font-weight: bold;")
 
         generate_btn = QPushButton("Generate Bill")
@@ -216,6 +233,13 @@ class BillingWindow(QWidget):
         elif tax_text == "19%":
             return 0.19
         return 0.07  # Default to 7%
+
+    def get_invoice_number(self):
+        """Generate invoice number in format SR-YYYYMMDD-XXX"""
+        date = self.date_picker.date()
+        date_str = date.toString("yyyyMMdd")
+        invoice_num = self.invoice_number_input.text().zfill(3)  # Pad with zeros
+        return f"SR-{date_str}-{invoice_num}"
 
     def handle_barcode(self):
         barcode = self.barcode_input.text()
@@ -329,9 +353,9 @@ class BillingWindow(QWidget):
         total = subtotal + tax_amount
         
         # Update labels
-        self.subtotal_label.setText(f"Subtotal: ${subtotal:.2f}")
-        self.tax_label.setText(f"Tax: ${tax_amount:.2f}")
-        self.total_label.setText(f"Total: ${total:.2f}")
+        self.subtotal_label.setText(f"Subtotal: €{subtotal:.2f}")
+        self.tax_label.setText(f"Tax: €{tax_amount:.2f}")
+        self.total_label.setText(f"Total: €{total:.2f}")
         
         # Update instance variables
         self.subtotal_amount = subtotal
@@ -358,19 +382,21 @@ class BillingWindow(QWidget):
             QMessageBox.information(self, "No Selection", "Please select a row to remove.")
 
     def generate_bill(self):
-        # Get selected date
+        # Get selected date and invoice number
         selected_date = self.date_picker.date().toString("dd.MM.yyyy")
+        invoice_number = self.get_invoice_number()
         
         html = "<div style='text-align: center; margin-bottom: 20px;'>"
         html += "<h1 style='color: #2E7D32; margin: 0;'>SUNRISE SUPERMARKET</h1>"
         html += "<p style='margin: 5px 0; color: #666;'>Schwarzwald Straße 27, 60528 Frankfurt am Main</p>"
-        html += f"<p style='margin: 5px 0;'><b>Bill Date:</b> {selected_date}</p>"
+        html += f"<p style='margin: 5px 0;'><b>Invoice:</b> {invoice_number} | <b>Date:</b> {selected_date}</p>"
         html += "</div>"
         
         html += "<hr style='margin: 20px 0;'>"
         html += "<h2>Customer Information</h2>"
         html += f"<p><b>Name:</b> {self.name_input.text()}<br>"
         html += f"<b>Phone:</b> {self.phone_input.text()}<br>"
+        html += f"<b>Address:</b> {self.address_input.text()}<br>"
         html += f"<b>Order Type:</b> {self.order_type.currentText()}<br><br>"
 
         html += "<table border='1' cellpadding='5'><tr><th>Product</th><th>Qty</th><th>Unit Price</th><th>Subtotal</th></tr>"
@@ -383,9 +409,9 @@ class BillingWindow(QWidget):
         
         # Add tax breakdown
         tax_rate_text = self.tax_combo.currentText()
-        html += f"<tr><td colspan='3'><b>Subtotal</b></td><td><b>${self.subtotal_amount:.2f}</b></td></tr>"
-        html += f"<tr><td colspan='3'><b>Tax ({tax_rate_text})</b></td><td><b>${self.tax_amount:.2f}</b></td></tr>"
-        html += f"<tr style='background-color: #f0f0f0;'><td colspan='3'><b>TOTAL</b></td><td><b>${self.total_amount:.2f}</b></td></tr>"
+        html += f"<tr><td colspan='3'><b>Subtotal</b></td><td><b>€{self.subtotal_amount:.2f}</b></td></tr>"
+        html += f"<tr><td colspan='3'><b>Tax ({tax_rate_text})</b></td><td><b>€{self.tax_amount:.2f}</b></td></tr>"
+        html += f"<tr style='background-color: #f0f0f0;'><td colspan='3'><b>TOTAL</b></td><td><b>€{self.total_amount:.2f}</b></td></tr>"
         html += "</table>"
 
         file_path = os.path.abspath("temp_bill.html")
@@ -396,66 +422,141 @@ class BillingWindow(QWidget):
 
     def download_pdf(self):
         if not PDF_AVAILABLE:
-            QMessageBox.warning(self, "PDF Not Available", 
-                               "PDF generation requires the fpdf module.\nPlease install it using: pip install fpdf2")
+            QMessageBox.warning(
+                self, "PDF Not Available",
+                "PDF generation requires the fpdf module.\nPlease install it using: pip install fpdf2"
+            )
             return
-        
-        # Get selected date
+
+        invoice_number = self.get_invoice_number()
         selected_date = self.date_picker.date().toString("dd.MM.yyyy")
-            
+
         pdf = FPDF()
         pdf.add_page()
-        
-        # Header
-        pdf.set_font("Arial", "B", 16)
-        pdf.cell(200, 10, txt="SUNRISE SUPERMARKET", ln=True, align="C")
-        pdf.set_font("Arial", size=10)
-        pdf.cell(200, 6, txt="Schwarzwald Straße 27, 60528 Frankfurt am Main", ln=True, align="C")
-        pdf.cell(200, 6, txt=f"Bill Date: {selected_date}", ln=True, align="C")
-        pdf.ln(10)
-        
-        # Customer Information
-        pdf.set_font("Arial", "B", 12)
-        pdf.cell(200, 8, txt="Customer Information", ln=True)
-        pdf.set_font("Arial", size=10)
-        pdf.cell(200, 6, txt=f"Name: {self.name_input.text()}", ln=True)
-        pdf.cell(200, 6, txt=f"Phone: {self.phone_input.text()}", ln=True)
-        pdf.cell(200, 6, txt=f"Order Type: {self.order_type.currentText()}", ln=True)
+
+        # Use a Unicode TrueType font if available (needed for €, ß, ä, etc.)
+        font_name = "Arial"
+        def _safe_text(txt: str) -> str:
+            return txt
+        try:
+            win_fonts = os.path.join(os.environ.get("WINDIR", "C:\\Windows"), "Fonts")
+            candidates = [
+                os.path.join(win_fonts, "arial.ttf"),
+                os.path.join(win_fonts, "segoeui.ttf"),
+            ]
+            chosen = next((p for p in candidates if os.path.exists(p)), None)
+            if chosen:
+                pdf.add_font("UI", "", chosen, uni=True)
+                pdf.add_font("UI", "B", chosen, uni=True)
+                font_name = "UI"
+            else:
+                def _safe_text(txt: str) -> str:
+                    return txt.replace("€", "EUR")
+        except Exception:
+            def _safe_text(txt: str) -> str:
+                return txt.replace("€", "EUR")
+
+        # === SAFE HEADER SECTION ===
+        header_y = 12
+        header_height = 32
+
+        # Light gray header background (safe bounds)
+        pdf.set_fill_color(240, 240, 240)
+        pdf.rect(10, header_y, 192, header_height, style="F")
+
+        # --- Logo ---
+        try:
+            logo_path = "assets/logo-sr.jpeg"
+            if os.path.exists(logo_path):
+                pdf.image(logo_path, x=12, y=header_y + 2, w=25)
+        except:
+            pass
+
+        # --- Company Info (to right of logo) ---
+        pdf.set_xy(45, header_y + 3)
+        pdf.set_font(font_name, "B", 16)
+        pdf.cell(100, 8, _safe_text("SUNRISE SUPERMARKET"), ln=0)
+
+        pdf.set_xy(45, header_y + 13)
+        pdf.set_font(font_name, size=10)
+        pdf.cell(100, 6, _safe_text("Schwarzwald Straße 27"), ln=2)
+        pdf.cell(100, 6, _safe_text("60528 Frankfurt am Main"), ln=2)
+
+        # --- Tax and Invoice Info (top-right corner) ---
+        pdf.set_xy(140, header_y + 5)
+        pdf.set_font(font_name, "B", size=9)
+        pdf.cell(60, 5, _safe_text("Tax ID: 01435901405"), ln=2, align="R")
+        pdf.cell(60, 5, _safe_text("VAT ID: DE365100311"), ln=2, align="R")
+        pdf.cell(60, 5, _safe_text(f"Invoice: {invoice_number}"), ln=2, align="R")
+        pdf.cell(60, 5, _safe_text(f"Date: {selected_date}"), ln=2, align="R")
+
+        # --- Separator Line ---
+        pdf.set_draw_color(180, 180, 180)
+        pdf.set_line_width(0.3)
+        pdf.line(10, header_y + header_height + 3, 202, header_y + header_height + 3)
+
+        pdf.ln(18)  # Move cursor down safely
+
+        # === CUSTOMER INFORMATION ===
+        pdf.set_font(font_name, "B", 16)
+        pdf.cell(200, 8, _safe_text("Customer Information"), ln=True)
+        pdf.set_font(font_name, size=10)
+        pdf.cell(200, 6, _safe_text(f"Name: {self.name_input.text()}"), ln=True)
+        pdf.cell(200, 6, _safe_text(f"Phone: {self.phone_input.text()}"), ln=True)
+        pdf.cell(200, 6, _safe_text(f"Address: {self.address_input.text()}"), ln=True)
+        pdf.cell(200, 6, _safe_text(f"Order Type: {self.order_type.currentText()}"), ln=True)
         pdf.ln(10)
 
-        # Product Table Header
-        pdf.set_font("Arial", "B", 10)
-        pdf.cell(60, 10, "Product", border=1)
-        pdf.cell(30, 10, "Qty", border=1)
-        pdf.cell(40, 10, "Unit Price", border=1)
-        pdf.cell(40, 10, "Subtotal", border=1)
+        # === PRODUCT TABLE HEADER ===
+        pdf.set_font(font_name, "B", 10)
+        pdf.cell(60, 10, _safe_text("Product"), border=1)
+        pdf.cell(30, 10, _safe_text("Qty"), border=1)
+        pdf.cell(40, 10, _safe_text("Unit Price"), border=1)
+        pdf.cell(40, 10, _safe_text("Subtotal"), border=1)
         pdf.ln()
-        
-        # Product Table Data
-        pdf.set_font("Arial", size=10)
 
+        # === PRODUCT TABLE DATA ===
+        pdf.set_font(font_name, size=10)
         for row in range(self.table.rowCount()):
             for col in [0, 1, 2, 3]:
-                text = self.table.item(row, col).text()
-                pdf.cell([60, 30, 40, 40][col], 10, text, border=1)
+                item = self.table.item(row, col)
+                text = item.text() if item is not None else ""
+                pdf.cell([60, 30, 40, 40][col], 10, _safe_text(text), border=1)
             pdf.ln()
 
-        # Tax breakdown
+        # === TAX BREAKDOWN ===
         tax_rate_text = self.tax_combo.currentText()
-        pdf.set_font("Arial", size=10)
-        pdf.cell(130, 10, "Subtotal", border=1)
-        pdf.cell(40, 10, f"${self.subtotal_amount:.2f}", border=1)
+        pdf.set_font(font_name, size=10)
+        pdf.cell(130, 10, _safe_text("Subtotal"), border=1)
+        pdf.cell(40, 10, _safe_text(f"€ {self.subtotal_amount:.2f}"), border=1)
         pdf.ln()
-        
-        pdf.cell(130, 10, f"Tax ({tax_rate_text})", border=1)
-        pdf.cell(40, 10, f"${self.tax_amount:.2f}", border=1)
+
+        pdf.cell(130, 10, _safe_text(f"Tax ({tax_rate_text})"), border=1)
+        pdf.cell(40, 10, _safe_text(f"€ {self.tax_amount:.2f}"), border=1)
         pdf.ln()
-        
-        # Total row
-        pdf.set_font("Arial", "B", 10)
-        pdf.cell(130, 10, "TOTAL", border=1)
-        pdf.cell(40, 10, f"${self.total_amount:.2f}", border=1)
-        pdf_path = QFileDialog.getSaveFileName(self, "Save Bill as PDF", "supermarket_bill.pdf", "PDF Files (*.pdf)")[0]
+
+        # === TOTAL ROW ===
+        pdf.set_font(font_name, "B", 10)
+        pdf.cell(130, 10, _safe_text("TOTAL"), border=1)
+        pdf.cell(40, 10, _safe_text(f"€ {self.total_amount:.2f}"), border=1)
+        pdf.ln(20)
+
+        # === PAYMENT INFORMATION FOOTER ===
+        pdf.set_font(font_name, "B", 10)
+        pdf.cell(200, 6, _safe_text("Payment Information"), ln=True, align="L")
+        pdf.set_font(font_name, size=9)
+        pdf.cell(200, 4, _safe_text("Sunrise International GbR"), ln=True, align="L")
+        pdf.cell(200, 4, _safe_text("Zahlungsempfänger: Taher Abu Mohammed"), ln=True, align="L")
+        pdf.cell(200, 4, _safe_text("Bankverbindung: Deutsche Bank AG"), ln=True, align="L")
+        pdf.cell(200, 4, _safe_text("BIC: DEUTDEFFXXX"), ln=True, align="L")
+        pdf.cell(200, 4, _safe_text("IBAN: DE91500700100257091900"), ln=True, align="L")
+
+        # === SAVE FILE ===
+        pdf_path = QFileDialog.getSaveFileName(
+            self, "Save Bill as PDF", f"invoice_{invoice_number}.pdf", "PDF Files (*.pdf)"
+        )[0]
         if pdf_path:
             pdf.output(pdf_path)
-            QMessageBox.information(self, "PDF Saved", f"Bill saved at:\n{pdf_path}")
+            QMessageBox.information(self, "PDF Saved", f"Invoice saved at:\n{pdf_path}")
+
+
